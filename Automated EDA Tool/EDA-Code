@@ -1,0 +1,150 @@
+#Project Code:
+
+# Install packages if not done yet
+!pip install streamlit pyngrok --quiet
+
+# Save Streamlit app code
+with open("eda_app.py", "w") as f:
+    f.write("""
+import streamlit as st
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
+import numpy as np
+import io
+import streamlit as st
+
+
+
+st.title("Automated Exploratory Data Analysis (EDA) Tool")
+
+uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx", "xls"])
+
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            data = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('xlsx', 'xls')):
+            data = pd.read_excel(uploaded_file)
+
+        st.success("File loaded successfully!")
+
+        # Data Info
+        st.subheader("Dataset Schema")
+        buffer = io.StringIO()
+        data.info(buf=buffer)
+        s = buffer.getvalue()
+        st.text(s)
+
+        st.subheader("First 5 Rows of the Dataset")
+        st.write(data.head())
+
+        st.subheader("Missing Values")
+
+        null_counts = data.isnull().sum()
+
+        # Create a new DataFrame with appropriate column names
+        null_table = pd.DataFrame({
+            "Column name": null_counts.index,
+            "Null values count": null_counts.values
+        })
+
+        # Display the table in Streamlit
+        st.dataframe(null_table)
+
+        flag = False
+        for col in data.columns:
+            if data[col].isnull().any():
+                flag = True
+                break
+
+        if flag:
+            st.write("There are missing values in the dataset.")
+            st.write("Handling missing values")
+            st.write("Columns whose missing values are filled")
+            filled_columns = []
+            for cols in data.columns:
+                if data[cols].isnull().any():
+                    if data[cols].dtype == 'object':
+                        data[cols] = data[cols].fillna(method='ffill').fillna(method='bfill')
+                    else:
+                        data[cols] = data[cols].fillna(data[cols].mean())
+                    filled_columns.append(cols)
+            if filled_columns:
+                st.write(", ".join(filled_columns))
+            st.write("Checking for further Null values if any exists")
+            f = False
+            for cols in data.columns:
+                if data[cols].isnull().any():
+                    st.write(f"Dropping column '{cols}' due to remaining missing values.")
+                    data.drop(cols, axis=1, inplace=True)
+                    f = True
+            if not f:
+                st.write("No further null values found")
+        else:
+            st.write("There are no missing values in the dataset.")
+
+        st.subheader("Duplicated values")
+        if data.duplicated().sum() == 0:
+            st.write("No duplicated rows found")
+        else:
+            data.duplicated().sum()
+            if data.duplicated().any():
+                st.write("Removing duplicated rows.")
+                data = data.drop_duplicates()
+
+        # Encode categorical data
+        encoder = LabelEncoder()
+        for col in data.columns:
+            if data[col].dtype == 'object':
+                data[col] = encoder.fit_transform(data[col])
+
+        st.subheader("Statistical Summary")
+        st.write(data.describe())
+
+        st.subheader("Correlation Matrix")
+        st.write(data.corr())
+
+        st.subheader("Histograms")
+        data.hist(figsize=(12,10), bins=30)
+        st.pyplot(plt.gcf())
+
+        st.subheader("Boxplots")
+        for col in data.select_dtypes(include=['float64', 'int64']).columns:
+            plt.figure(figsize=(8,6))
+            sns.boxplot(x=data[col])
+            st.pyplot(plt.gcf())
+
+        st.subheader("Pairplot")
+        # Create the pairplot and capture the figure
+        fig = sns.pairplot(data).fig  # `.fig` extracts the Matplotlib figure
+        # Show the plot in Streamlit
+        st.pyplot(fig) 
+
+
+    except Exception as e:
+        st.error(f"Error reading the file: {e}")
+""")
+
+# Launch streamlit app using thread
+import threading
+import time
+from pyngrok import ngrok
+import os
+
+# Set your ngrok auth token (only once)
+!ngrok config add-authtoken 2vwYf3xtV804wV3HJgw86URTiVf_38iMdYtfhRqTnpFivijNn
+
+def run_streamlit():
+    os.system('streamlit run eda_app.py')
+
+thread = threading.Thread(target=run_streamlit)
+thread.start()
+
+# Wait for Streamlit to start
+time.sleep(5)
+
+# Get public URL
+public_url = ngrok.connect(8501)
+print(f"🔗 Public URL: {public_url}")
